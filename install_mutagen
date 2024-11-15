@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# GitHub API URL for latest release
+repo="mutagen-io/mutagen"
+latest_release_url="https://api.github.com/repos/$repo/releases/latest"
+
+# Fetch the latest release info using curl
+latest_version=$(curl -s "$latest_release_url" | grep -oP '"tag_name": "\K(.*)(?=")')
+if [[ -z "$latest_version" ]]; then
+    echo "Failed to fetch the latest Mutagen version."
+    exit 1
+fi
+
+download_url="https://github.com/$repo/releases/download/$latest_version/mutagen_linux_amd64_${latest_version}.tar.gz"
+
+# Download the latest release
+curl -LO "$download_url"
+if [[ $? -ne 0 ]]; then
+    echo "Failed to download Mutagen from $download_url"
+    exit 1
+else
+    echo "Mutagen $latest_version downloaded."
+fi
+
+if [ ! -d "/opt/mutagen" ]; then
+        sudo mkdir /opt/mutagen
+        echo "/opt/mutagen directory created"
+else
+        sudo rm -rf /opt/mutagen/*
+        echo "/opt/mutagen directory cleaned"
+fi
+
+# Extract the downloaded tar file
+echo "Extracting Mutagen..."
+sudo tar -C /opt/mutagen -xzf "mutagen_linux_amd64_${latest_version}.tar.gz"
+if [[ ! ":$PATH:" == *"opt/mutagen"* ]]; then
+        echo 'export PATH=/opt/mutagen:$PATH' >> ~/.zshenv
+        echo 'Added Mutagen to $PATH'
+else
+        echo 'Mutagen already in $PATH'
+fi
+
+# Cleanup
+rm "mutagen_linux_amd64_${latest_version}.tar.gz"
+echo "Mutagen $latest_version extracted and cleaned up."
+
+echo "Mutagen $latest_version installed successfully."
+exec zsh
+
