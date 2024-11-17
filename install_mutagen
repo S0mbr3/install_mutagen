@@ -1,49 +1,158 @@
 #!/bin/bash
 
-# GitHub API URL for latest release
-repo="mutagen-io/mutagen"
-latest_release_url="https://api.github.com/repos/$repo/releases/latest"
+# Function to display the platform menu
+choose_platform() {
+    echo "Choose a platform:"
+    select platform in "linux" "freebsd" "darwin" "dragonfly" "netbsd" "aix_ppc" "openbsd" "solaris"; do
+        if [[ -n $platform ]]; then
+            echo "You chose platform: $platform"
+            choose_architecture "$platform"  # Call the architecture menu with the chosen platform
+            break
+        else
+            echo "Invalid selection. Please try again."
+        fi
+    done
+}
 
-# Fetch the latest release info using curl
-latest_version=$(curl -s "$latest_release_url" | grep -oP '"tag_name": "\K(.*)(?=")')
-if [[ -z "$latest_version" ]]; then
-    echo "Failed to fetch the latest Mutagen version."
-    exit 1
-fi
+# Function to display the architecture menu based on platform
+choose_architecture() {
+    local platform=$1
+    echo "Choose an architecture for $platform:"
 
-download_url="https://github.com/$repo/releases/download/$latest_version/mutagen_linux_amd64_${latest_version}.tar.gz"
+    case $platform in
+        linux)
+            architectures=("amd64" "arm64" "arm" "386" "mips64le" "mips64" "mipsle" "mips" "ppc64le" "ppc64" "riscv64" "s390x")
+            ;;
+        freebsd)
+            architectures=("amd64" "arm64" "386" "arm")
+            ;;
+        darwin)
+            architectures=("amd64" "arm64")
+            ;;
+        dragonfly)
+            architectures=("amd64")
+            ;;
+        netbsd)
+            architectures=("amd64" "arm64" "arm" "386")
+            ;;
+        aix_ppc)
+            architectures=("ppc64")
+            ;;
+        openbsd)
+            architectures=("amd64" "arm64" "arm" "386")
+            ;;
+        solaris)
+            architectures=("amd64")
+            ;;
+        *)
+            echo "Unsupported platform."
+            exit 1
+            ;;
+    esac
 
-# Download the latest release
-curl -LO "$download_url"
-if [[ $? -ne 0 ]]; then
-    echo "Failed to download Mutagen from $download_url"
-    exit 1
-else
-    echo "Mutagen $latest_version downloaded."
-fi
+    # Display the architecture options
+    select architecture in "${architectures[@]}"; do
+        if [[ -n $architecture ]]; then
+            echo "You chose architecture: $architecture"
+            construct_download_url "$platform" "$architecture"  # Call the function to construct the download URL
+            break
+        else
+            echo "Invalid selection. Please try again."
+        fi
+    done
+}
 
-if [ ! -d "/opt/mutagen" ]; then
-        sudo mkdir /opt/mutagen
-        echo "/opt/mutagen directory created"
-else
-        sudo rm -rf /opt/mutagen/*
-        echo "/opt/mutagen directory cleaned"
-fi
+# Function to construct the download URL based on platform and architecture
+construct_download_url() {
+    local platform=$1
+    local architecture=$2
+    repo="mutagen-io/mutagen"
+    latest_release_url="https://api.github.com/repos/$repo/releases/latest"
 
-# Extract the downloaded tar file
-echo "Extracting Mutagen..."
-sudo tar -C /opt/mutagen -xzf "mutagen_linux_amd64_${latest_version}.tar.gz"
-if [[ ! ":$PATH:" == *"opt/mutagen"* ]]; then
-        echo 'export PATH=/opt/mutagen:$PATH' >> ~/.zshenv
-        echo 'Added Mutagen to $PATH'
-else
-        echo 'Mutagen already in $PATH'
-fi
+    # Fetch the latest version
+    latest_version=$(curl -s "$latest_release_url" | grep -oP '"tag_name": "\K(.*)(?=")')
+    if [[ -z $latest_version ]]; then
+        echo "Failed to fetch the latest Mutagen version."
+        exit 1
+    fi
 
-# Cleanup
-rm "mutagen_linux_amd64_${latest_version}.tar.gz"
-echo "Mutagen $latest_version extracted and cleaned up."
+    # Construct the download URL
+    download_url="https://github.com/$repo/releases/download/$latest_version/mutagen_${platform}_${architecture}_${latest_version}.tar.gz"
+    echo "Download URL: $download_url"
 
-echo "Mutagen $latest_version installed successfully."
-exec zsh
+    # Download and extract the file as needed
+    download_and_extract "$download_url"
+}
 
+# Function to download and extract the selected version
+download_and_extract() {
+    local url=$1
+    curl -LO "$url"
+    if [[ $? -ne 0 ]]; then
+        echo "Failed to download Mutagen from $url"
+        exit 1
+    else
+        echo "Mutagen $latest_version downloaded."
+    fi
+
+    if [ ! -d "/opt/mutagen" ]; then
+      sudo mkdir /opt/mutagen
+      echo "/opt/mutagen directory created"
+    else
+      sudo rm -rf /opt/mutagen/*
+      echo "/opt/mutagen directory cleaned"
+    fi
+
+    # Extract the downloaded tar file
+    echo "Extracting Mutagen..."
+    sudo tar -C /opt/mutagen -xzf "$(basename $url)" || { echo "Extraction failed."; exit 1; }
+
+    # Cleanup downloaded file
+    rm "$(basename $url)"
+    echo "Download and extraction complete."
+    install_mutagen
+}
+
+install_mutagen() {
+  if [[ ":$PATH:" == *"opt/mutagen"* ]]; then
+    echo 'Mutagen already in $PATH'
+  else
+
+    USER_SHELL=$(basename "$SHELL")
+
+    FILE=/etc/resolv.conf
+    bashrc=~/.bashrc
+    zshrc=~/.zshrc
+    fishrc=~/.config/fish/config.fish
+    profile=~/.profile
+    export_mutagen='export PATH=$PATH:/opt/mutagen'
+    installed=false
+
+    if test -f "$bashrc"; then
+      echo $export_mutagen >> $bashrc
+      intalled=true
+    fi
+    if test -f "$zshrc"; then
+      echo $export_mutagen >> ~/.zshenv
+      installed=true
+    fi
+
+    if test -f "$fishrc"; then
+      echo 'set -x PATH $PATH /opt/mutagen' >> $fishrc
+      installed=true
+    fi
+    if test -f "$profile"; then
+      echo $export_mutagen >> $profile
+      installed=true
+    fi
+    if $installed; then
+      echo 'Added Mutagen to $PATH'
+      echo "Mutagen $latest_version installed successfully."
+      exec $USER_SHELL
+    fi
+  fi
+  echo "Mutagen $latest_version installed successfully."
+}
+
+# Run the platform selection menu
+choose_platform
