@@ -70,7 +70,7 @@ construct_download_url() {
     latest_release_url="https://api.github.com/repos/$repo/releases/latest"
 
     # Fetch the latest version
-    latest_version=$(curl -s "$latest_release_url" | grep -oP '"tag_name": "\K(.*)(?=")')
+    latest_version=$(curl -s "$latest_release_url" | grep -Eo '"tag_name": "[^"]+"' | sed 's/"tag_name": "//; s/"//g')
     if [[ -z $latest_version ]]; then
         echo "Failed to fetch the latest Mutagen version."
         exit 1
